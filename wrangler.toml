@@ -1,0 +1,6 @@
+# wrangler.toml configuration for Cloudflare Pages
+name = "kanangalstudio"
+compatibility_date = "2026-06-11"
+
+[pages]
+directory = "./dist"

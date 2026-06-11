@@ -8,7 +8,8 @@ export default function Layout({ children }) {
   return (
     <div style={{
       display: 'flex',
-      height: '100vh',
+      height: '100%',
+      minHeight: '100%',
       background: 'transparent',
       position: 'relative',
       overflow: 'hidden'

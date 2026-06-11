@@ -42,7 +42,7 @@ export default function BottomNav() {
                         style={{
                             display: 'flex', flexDirection: 'column',
                             alignItems: 'center', gap: 4, background: 'none',
-                            border: 'none', color: active ? '#004252' : '#94a3b8',
+                            border: 'none', color: active ? '#c5a880' : '#94a3b8',
                             padding: '8px 12px', cursor: 'pointer',
                             transition: 'all 0.2s'
                         }}>
