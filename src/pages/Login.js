@@ -1,4 +1,5 @@
 import { useAuth } from '../AuthContext';
+import kanangalLogo from '../images/KanangalLogo.jpg';
 
 function GoogleIcon() {
   return (
@@ -145,7 +146,7 @@ export default function Login() {
             borderRadius: 24, border: '1px solid rgba(255,255,255,0.15)',
             boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
           }}>
-            <img src="/src/images/KanangalLogo.jpg" alt="Kanangal" style={{
+            <img src={kanangalLogo} alt="Kanangal" style={{
               height: 90, objectFit: 'contain', borderRadius: 16
             }} />
           </div>
@@ -171,7 +172,7 @@ export default function Login() {
           <div style={{
             justifyContent: 'center', marginBottom: 24
           }} className="mobile-show">
-            <img src="/src/images/KanangalLogo.jpg" alt="Kanangal" style={{
+            <img src={kanangalLogo} alt="Kanangal" style={{
               height: 64, objectFit: 'contain', borderRadius: 12
             }} />
           </div>

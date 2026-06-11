@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
+import kanangalLogo from '../images/KanangalLogo.jpg';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -140,7 +141,7 @@ const Landing = () => {
                             background: 'linear-gradient(135deg, #10b981 0%, #000 100%)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center'
                         }}>
-                             <img src="/src/images/KanangalLogo.jpg" alt="" style={{ width: '80%', height: '80%', borderRadius: 4, objectFit: 'cover' }} />
+                             <img src={kanangalLogo} alt="" style={{ width: '80%', height: '80%', borderRadius: 4, objectFit: 'cover' }} />
                         </div>
                         <span style={{ fontSize: 24, fontWeight: 900, color: '#10b981', letterSpacing: -1 }}>KANANGAL</span>
                     </div>
@@ -181,7 +182,7 @@ const Landing = () => {
                         display: 'flex', alignItems: 'center', gap: 10, 
                         marginBottom: 20, color: '#10b981', fontWeight: 900 
                     }}>
-                        <img src="/src/images/KanangalLogo.jpg" alt="" style={{ width: 24, borderRadius: 4 }} />
+                        <img src={kanangalLogo} alt="" style={{ width: 24, borderRadius: 4 }} />
                         <span style={{ letterSpacing: 4, fontSize: 14 }}>STUDIO ORIGINAL</span>
                     </div>
                     <h1 style={{ fontSize: 72, fontWeight: 900, marginBottom: 20, letterSpacing: -2 }}>
