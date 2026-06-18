@@ -71,7 +71,26 @@ export const studioAPI = {
   updateProfile: (data) => api.put('/api/studios/profile', data),
   addMember: (familyId, data) => api.post(`/api/studios/families/${familyId}/members`, data),
   updateMember: (familyId, memberId, data) => api.put(`/api/studios/families/${familyId}/members/${memberId}`, data),
-  removeMember: (familyId, memberId) => api.delete(`/api/studios/families/${familyId}/members/${memberId}`)
+  removeMember: (familyId, memberId) => api.delete(`/api/studios/families/${familyId}/members/${memberId}`),
+  
+  // Crew API Endpoints
+  getCrew: () => api.get('/api/studios/crew'),
+  createCrew: (data) => api.post('/api/studios/crew', data),
+  updateCrew: (id, data) => api.put(`/api/studios/crew/${id}`, data),
+  deleteCrew: (id) => api.delete(`/api/studios/crew/${id}`),
+  getEventCrew: (eventId) => api.get(`/api/studios/events/${eventId}/crew`),
+  assignCrew: (eventId, data) => api.post(`/api/studios/events/${eventId}/crew`, data),
+  removeCrew: (eventId, assignmentId) => api.delete(`/api/studios/events/${eventId}/crew/${assignmentId}`),
+  
+  // Reusable Packages API Endpoints
+  getPackages: () => api.get('/api/studios/packages'),
+  createPackage: (data) => api.post('/api/studios/packages', data),
+  updatePackage: (id, data) => api.put(`/api/studios/packages/${id}`, data),
+  deletePackage: (id) => api.delete(`/api/studios/packages/${id}`),
+  
+  // Billing and Expense Tracking API Endpoints
+  getEventBilling: (eventId) => api.get(`/api/studios/events/${eventId}/billing`),
+  updateEventBilling: (eventId, data) => api.put(`/api/studios/events/${eventId}/billing`, data)
 };
 
 export default api;

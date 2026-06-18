@@ -109,7 +109,8 @@ export default function Upload() {
       id: Math.random().toString(36).substring(7),
       status: 'pending',
       progress: 0,
-      preview: URL.createObjectURL(f)
+      preview: URL.createObjectURL(f),
+      type: f.type
     }));
     setFiles(prev => [...prev, ...newFiles]);
   };
@@ -136,7 +137,8 @@ export default function Upload() {
         id: Math.random().toString(36).substring(7),
         status: 'pending',
         progress: 0,
-        preview: URL.createObjectURL(f)
+        preview: URL.createObjectURL(f),
+        type: f.type
       }));
       setFiles(prev => [...prev, ...newFiles]);
     }
@@ -462,7 +464,7 @@ export default function Upload() {
                 marginBottom: 6,
                 letterSpacing: '-0.01em'
               }}>
-                {dragActive ? 'Release to add files' : 'Drop photos here or click to browse'}
+                {dragActive ? 'Release to add files' : 'Drop photos or videos here or click to browse'}
               </div>
               <p style={{
                 fontSize: 13,
@@ -472,13 +474,13 @@ export default function Upload() {
                 lineHeight: 1.6,
                 fontWeight: 500
               }}>
-                Select high-resolution JPG or PNG files. You can upload multiple pages at once.
+                Select high-resolution photos or video files. You can upload multiple pages at once.
               </p>
             </div>
             <input
               type="file"
               multiple
-              accept="image/*"
+              accept="image/*,video/*"
               onChange={onFileSelect}
               style={{ display: 'none' }}
               ref={fileInputRef}
@@ -585,11 +587,19 @@ export default function Upload() {
                       background: 'rgba(0,66,82,0.06)',
                       border: '1px solid rgba(255,255,255,0.8)'
                     }}>
-                      <img
-                        src={f.preview}
-                        alt={f.name}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
+                      {f.type?.startsWith('video/') ? (
+                        <video
+                          src={f.preview}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          muted
+                        />
+                      ) : (
+                        <img
+                          src={f.preview}
+                          alt={f.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      )}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{

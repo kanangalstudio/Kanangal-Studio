@@ -143,6 +143,32 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* Profit & Loss Financial Summary */}
+      <div style={{ ...glassCard, padding: 32, marginBottom: 40 }}>
+        <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 8px 0' }}>Financial Performance</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 24px 0' }}>Track client revenue, payouts, album costs, and net profit margins.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 24 }}>
+          <div style={{ background: '#f8fafc', padding: 20, borderRadius: 20, border: '1px solid #eef2f6' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>Total Revenue (Agreed)</div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: '#004252' }}>₹{Number(stats?.total_revenue || 0).toLocaleString('en-IN')}</div>
+          </div>
+          <div style={{ background: '#f8fafc', padding: 20, borderRadius: 20, border: '1px solid #eef2f6' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>Total Received (Advances)</div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: '#16a34a' }}>₹{Number(stats?.total_received || 0).toLocaleString('en-IN')}</div>
+          </div>
+          <div style={{ background: '#f8fafc', padding: 20, borderRadius: 20, border: '1px solid #eef2f6' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>Total Studio Expenses</div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: '#ef4444' }}>₹{Number(stats?.total_expenses || 0).toLocaleString('en-IN')}</div>
+          </div>
+          <div style={{ background: (stats?.profit_loss || 0) >= 0 ? 'rgba(16,185,129,0.06)' : 'rgba(239,68,68,0.06)', padding: 20, borderRadius: 20, border: `1.5px solid ${(stats?.profit_loss || 0) >= 0 ? '#10b981' : '#ef4444'}` }}>
+            <div style={{ fontSize: 11, color: (stats?.profit_loss || 0) >= 0 ? '#047857' : '#b91c1c', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>Net Profit margin</div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: (stats?.profit_loss || 0) >= 0 ? '#10b981' : '#ef4444' }}>
+              ₹{Number(stats?.profit_loss || 0).toLocaleString('en-IN')}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 32 }} className="grid-2-col">
 
         {/* Left Column */}
@@ -152,7 +178,7 @@ export default function Dashboard() {
           <div style={{ ...glassCard, padding: 32 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:28 }}>
               <div>
-                <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Cloudinary Storage</h3>
+                <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>R2 Storage</h3>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, margin: '4px 0 0' }}>Monitor your high-resolution asset capacity</p>
               </div>
               <div style={{

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useGlobal } from '../GlobalContext';
 import { studioAPI } from '../api';
 import { 
@@ -23,7 +24,7 @@ export default function Families() {
   const { families, loading, refreshFamilies } = useGlobal();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name: '', primary_contact_name: '', primary_contact_email: '', phone: '', address: '', alternate_phone: '', preferred_event_date: '', budget: '' });
+  const [form, setForm] = useState({ name: '', primary_contact_name: '', primary_contact_email: '', phone: '', address: '', alternate_phone: '' });
   const [saving, setSaving] = useState(false);
   const [editingFamily, setEditingFamily] = useState(null);
   const [error, setError] = useState(null);
@@ -76,7 +77,7 @@ export default function Families() {
       }
       setShowModal(false);
       setEditingFamily(null);
-      setForm({ name: '', primary_contact_name: '', primary_contact_email: '', phone: '', address: '', alternate_phone: '', preferred_event_date: '', budget: '' });
+      setForm({ name: '', primary_contact_name: '', primary_contact_email: '', phone: '', address: '', alternate_phone: '' });
       refreshFamilies();
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to process family.');
@@ -106,9 +107,7 @@ export default function Families() {
       primary_contact_email: f.primary_contact_email,
       phone: f.phone || '',
       address: f.address || '',
-      alternate_phone: f.alternate_phone || '',
-      preferred_event_date: f.preferred_event_date || '',
-      budget: f.budget || ''
+      alternate_phone: f.alternate_phone || ''
     });
     setShowModal(true);
   };
@@ -116,7 +115,7 @@ export default function Families() {
   const closeForm = () => {
     setShowModal(false);
     setEditingFamily(null);
-    setForm({ name: '', primary_contact_name: '', primary_contact_email: '', phone: '', address: '', alternate_phone: '', preferred_event_date: '', budget: '' });
+    setForm({ name: '', primary_contact_name: '', primary_contact_email: '', phone: '', address: '', alternate_phone: '' });
     setError(null);
   };
 
@@ -296,7 +295,7 @@ export default function Families() {
         )}
 
       {/* Modal */}
-      {showModal && (
+      {showModal && createPortal(
         <div 
           style={{ 
             position: 'fixed', inset: 0, 
@@ -367,16 +366,7 @@ export default function Families() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }} className="mobile-grid-1">
-                <div>
-                  <label style={labelStyle}>Preferred Event Date</label>
-                  <input type="date" style={inputStyle} value={form.preferred_event_date} onChange={e => setForm({ ...form, preferred_event_date: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Estimated Budget (₹)</label>
-                  <input type="number" style={inputStyle} value={form.budget} onChange={e => setForm({ ...form, budget: e.target.value })} placeholder="INR Amount" />
-                </div>
-              </div>
+
 
               <div>
                 <label style={labelStyle}>City & Address</label>
@@ -410,7 +400,8 @@ export default function Families() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

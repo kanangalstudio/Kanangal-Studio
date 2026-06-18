@@ -205,21 +205,23 @@ export default function AlbumDetail() {
         {/* Premium Header */}
         <div style={{ 
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+          flexWrap: 'wrap', gap: 24,
           marginBottom: 48, background: '#fff', borderRadius: 32, 
-          border: '1px solid #f1f5f9', padding: 40, boxShadow: '0 4px 20px rgba(0,0,0,0.02)' 
+          border: '1px solid #f1f5f9', padding: 32, boxShadow: '0 4px 20px rgba(0,0,0,0.02)' 
         }} className="mobile-stack">
-          <div style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', flex: '1 1 500px', minWidth: 0 }}>
             <div style={{ 
-              width: 80, height: 80, borderRadius: 24, 
+              width: 60, height: 60, borderRadius: 18, 
               background: '#f8fafc', display: 'flex', 
               alignItems: 'center', justifyContent: 'center', color: '#004252',
-              boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.02)'
+              boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.02)',
+              flexShrink: 0
             }}>
-              <AlbumIcon size={40} />
+              <AlbumIcon size={28} />
             </div>
-            <div>
-              <h1 style={{ fontSize: 32, fontWeight: 800, color: '#004252', marginBottom: 8, letterSpacing: '-1px' }}>{album?.name}</h1>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 24, fontSize: 14, color: '#64748b', fontWeight: 600 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h1 style={{ fontSize: 24, fontWeight: 800, color: '#004252', marginBottom: 8, letterSpacing: '-0.5px' }}>{album?.name}</h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 24, fontSize: 13, color: '#64748b', fontWeight: 600 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <ImageIcon size={16} style={{ opacity: 0.6 }} /> {pages.length} Assets
                 </div>
@@ -252,7 +254,7 @@ export default function AlbumDetail() {
               boxShadow: '0 8px 24px rgba(0,0,0,0.1)'
             }} className="hover-lift">
               {uploading ? 'Processing...' : <><UploadIcon size={18} /> Upload Assets</>}
-              <input type="file" multiple accept="image/*" onChange={onFileChange} style={{ display: 'none' }} disabled={uploading} />
+              <input type="file" multiple accept="image/*,video/*" onChange={onFileChange} style={{ display: 'none' }} disabled={uploading} />
             </label>
           </div>
         </div>
@@ -324,7 +326,7 @@ export default function AlbumDetail() {
               fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 10
             }}>
               <UploadIcon size={20} /> Click to Upload
-              <input type="file" multiple accept="image/*" onChange={onFileChange} style={{ display: 'none' }} />
+              <input type="file" multiple accept="image/*,video/*" onChange={onFileChange} style={{ display: 'none' }} />
             </label>
           </div>
         ) : null}
@@ -378,51 +380,112 @@ export default function AlbumDetail() {
 
           {pages.length > 0 ? pages.map((p, index) => {
             const isSelected = selectedIds.includes(p.id);
+            
+            // Helper to get filename
+            const getFileName = (url) => {
+              if (!url) return '';
+              try {
+                const decoded = decodeURIComponent(url);
+                const urlObj = new URL(decoded);
+                const metadataParam = urlObj.searchParams.get('metadata');
+                if (metadataParam) {
+                  const meta = JSON.parse(metadataParam);
+                  if (meta.file_name) return meta.file_name;
+                }
+                const parts = urlObj.pathname.split('/');
+                return parts[parts.length - 1];
+              } catch(e) {}
+              return '';
+            };
+            const fileName = getFileName(p.file_url);
+
             return (
               <div key={p.id} 
                 className="hover-lift"
                 style={{ 
-                  background: '#fff', borderRadius: 24, padding: 12, 
-                  border: isSelected ? '2px solid #004252' : '1px solid #f1f5f9',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                  background: '#fff', borderRadius: 20, padding: '12px 18px', 
+                  border: isSelected ? '2px solid #004252' : '1px solid #eef2f6',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.02)',
                   display: 'flex', alignItems: 'center', gap: 20,
                   transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                   position: 'relative'
                 }}
               >
-                {/* Visual Preview */}
+                {/* Visual Preview Container */}
                 <div 
                   onClick={() => !selectionMode && setSelectedImage(p)}
                   style={{ 
-                    width: 120, height: 80, borderRadius: 16, overflow: 'hidden', 
+                    width: 120, height: 80, borderRadius: 12, overflow: 'hidden', 
                     flexShrink: 0, position: 'relative', cursor: 'zoom-in',
-                    background: '#f8fafc'
+                    background: '#f8fafc', border: '1px solid #f1f5f9'
                   }}
                 >
-                    {!selectionMode && (
-                      <div style={{ position: 'absolute', bottom: 16, right: 16, display: 'flex', gap: 8 }}>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleDeleteClick(p); }}
-                          style={{ 
-                            background: '#ef4444', color: '#fff', border: 'none', 
-                            width: 36, height: 36, borderRadius: 14, 
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                            cursor: 'pointer', boxShadow: '0 8px 16px rgba(239, 68, 68, 0.25)',
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                  <img 
+                    src={p.thumbnail_url || p.file_url} 
+                    alt={`Page ${p.page_number}`} 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  />
+                  {p.page_type === 'video' && (
+                    <div style={{
+                      position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.25)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      <div style={{
+                        width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.9)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#004252',
+                        fontSize: 10, paddingLeft: 2
+                      }}>
+                        ▶
                       </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* File Information Column */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ fontSize: 13, color: '#001D25', fontWeight: 800 }}>
+                    Asset ID: {p.id.slice(-6)}
+                  </div>
+                  {fileName && (
+                    <div style={{ fontSize: 11, color: '#64748b', wordBreak: 'break-all', fontWeight: 500 }}>
+                      {fileName}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>
+                    <span style={{ textTransform: 'uppercase', padding: '1px 6px', background: '#f1f5f9', color: '#64748b', borderRadius: 4 }}>
+                      {p.page_type}
+                    </span>
+                    {p.file_size_kb && (
+                      <span>{(p.file_size_kb / 1024).toFixed(2)} MB</span>
                     )}
                   </div>
-                  <div style={{ padding: '16px 20px', background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontSize: 13, color: '#001D25', fontWeight: 800 }}>Asset ID: {p.id.slice(-6)}</div>
-                    {!selectionMode && <button style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'grab', padding: 0 }}><Move size={16} /></button>}
-                  </div>
                 </div>
-              );
-            }) : null}
+
+                {/* Actions Column (Right Align) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  {!selectionMode && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(p); }}
+                      style={{ 
+                        background: '#fef2f2', color: '#ef4444', border: '1px solid #fee2e2', 
+                        width: 36, height: 36, borderRadius: 10, 
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                        cursor: 'pointer', transition: 'all 0.2s'
+                      }}
+                      className="delete-hover-btn"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                  {!selectionMode && (
+                    <button style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'grab', padding: 0 }}>
+                      <Move size={16} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          }) : null}
         </div>
 
         {/* Right Column: Managed Access */}
@@ -479,7 +542,28 @@ export default function AlbumDetail() {
                     }}>
                       <ShieldCheck size={12} /> {m.role}
                     </div>
-                    <div style={{ fontSize: 10, opacity: 0.5 }}>Never Connected</div>
+                    <div style={{ fontSize: 10, opacity: 0.8, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      <div>{m.last_login_at ? 'Connected' : 'Never Connected'}</div>
+                      {m.expires_at && (
+                        <div style={{ 
+                          fontSize: 9, 
+                          color: m.is_expired ? '#ef4444' : '#c5a880', 
+                          fontWeight: 800,
+                          textTransform: 'uppercase'
+                        }}>
+                          {m.is_expired 
+                            ? 'Expired' 
+                            : (() => {
+                                const diffMs = m.expires_at - Date.now();
+                                const diffHrs = Math.round(diffMs / (1000 * 60 * 60));
+                                if (diffHrs < 1) return '< 1h left';
+                                if (diffHrs < 24) return `${diffHrs}h left`;
+                                return `${Math.ceil(diffHrs / 24)}d left`;
+                              })()
+                          }
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -510,7 +594,7 @@ export default function AlbumDetail() {
       </div>
 
       {/* Floating Action Bar */}
-      {selectionMode && selectedIds.length > 0 && (
+      {selectionMode && selectedIds.length > 0 && createPortal(
         <div style={{ 
           position: 'fixed', bottom: 40, left: '50%', transform: 'translateX(-50%)', 
           background: '#001D25', padding: '12px 12px 12px 32px', borderRadius: 28, 
@@ -552,7 +636,8 @@ export default function AlbumDetail() {
               <Trash2 size={18} /> Delete Selected
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Delete Confirmation Portal */}
@@ -672,16 +757,30 @@ export default function AlbumDetail() {
 
           {/* Lightbox Content */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, overflow: 'hidden' }}>
-            <img 
-              src={selectedImage.metadata?.fullhd?.url || selectedImage.file_url} 
-              alt="High Resolution Preview" 
-              style={{ 
-                maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', 
-                borderRadius: 12, boxShadow: '0 40px 100px rgba(0,0,0,0.5)',
-                animation: 'zoom-in 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
-              }}
-              onClick={e => e.stopPropagation()}
-            />
+            {selectedImage.page_type === 'video' ? (
+              <video 
+                src={selectedImage.metadata?.fullhd?.url || selectedImage.file_url} 
+                controls
+                autoPlay
+                style={{ 
+                  maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', 
+                  borderRadius: 12, boxShadow: '0 40px 100px rgba(0,0,0,0.5)',
+                  animation: 'zoom-in 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
+                }}
+                onClick={e => e.stopPropagation()}
+              />
+            ) : (
+              <img 
+                src={selectedImage.metadata?.fullhd?.url || selectedImage.file_url} 
+                alt="High Resolution Preview" 
+                style={{ 
+                  maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', 
+                  borderRadius: 12, boxShadow: '0 40px 100px rgba(0,0,0,0.5)',
+                  animation: 'zoom-in 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
+                }}
+                onClick={e => e.stopPropagation()}
+              />
+            )}
           </div>
 
           <style>{`

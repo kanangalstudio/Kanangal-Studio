@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { studioAPI } from '../api';
 import { 
@@ -19,8 +20,20 @@ import {
   ArrowLeft,
   Activity,
   History,
-  ShieldCheck
+  ShieldCheck,
+  Network
 } from 'lucide-react';
+
+const formatINR = (val) => {
+  if (!val) return '';
+  const clean = val.toString().replace(/\D/g, '');
+  if (!clean) return '';
+  return new Intl.NumberFormat('en-IN').format(parseInt(clean, 10));
+};
+
+const parseINR = (val) => {
+  return val.replace(/\D/g, '');
+};
 
 export default function FamilyDetail() {
   const { id } = useParams();
@@ -28,7 +41,7 @@ export default function FamilyDetail() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name: '', date: new Date().toISOString().split('T')[0], description: '' });
+  const [form, setForm] = useState({ name: '', date: new Date().toISOString().split('T')[0], end_date: new Date().toISOString().split('T')[0], description: '', location: '', total_amount: '', advance_amount: '', deliverables: '', auditorium: '' });
   const [saving, setSaving] = useState(false);
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [memberForm, setMemberForm] = useState({ email: '', name: '', permitted_albums: [], permitted_events: [] });
@@ -39,17 +52,23 @@ export default function FamilyDetail() {
   const [memberToDelete, setMemberToDelete] = useState(null);
   const navigate = useNavigate();
 
+  // Package states
+  const [packages, setPackages] = useState([]);
+  const [selectedPackageId, setSelectedPackageId] = useState('');
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [familyRes, eventsRes, albumsRes] = await Promise.all([
+        const [familyRes, eventsRes, albumsRes, packagesRes] = await Promise.all([
           studioAPI.getFamilyDetail(id),
           studioAPI.getFamilyEvents(id),
-          studioAPI.getFamilyAlbums(id)
+          studioAPI.getFamilyAlbums(id),
+          studioAPI.getPackages()
         ]);
         setFamily(familyRes.data.family);
         setEvents(eventsRes.data.events);
         setAllAlbums(albumsRes.data.albums);
+        setPackages(packagesRes.data.packages || []);
       } catch (e) {
         console.error("Family detail failed", e);
       } finally {
@@ -58,6 +77,21 @@ export default function FamilyDetail() {
     };
     fetchData();
   }, [id]);
+
+  const handlePackageChange = (packageId) => {
+    setSelectedPackageId(packageId);
+    if (!packageId) return;
+    const pkg = packages.find(p => p.id === packageId);
+    if (pkg) {
+      setForm(prev => ({
+        ...prev,
+        total_amount: pkg.base_price ? pkg.base_price.toString() : '',
+        deliverables: pkg.services_included && Array.isArray(pkg.services_included) 
+          ? pkg.services_included.join(', ') 
+          : pkg.description || ''
+      }));
+    }
+  };
 
   const handleSaveMember = async (e) => {
     e.preventDefault();
@@ -75,7 +109,8 @@ export default function FamilyDetail() {
           email: memberForm.email,
           display_name: memberForm.name,
           role: editingMember.role,
-          permitted_albums: combinedPermissions
+          permitted_albums: combinedPermissions,
+          duration: memberForm.duration
         });
       } else {
         const role = (family?.members || []).length === 0 ? 'primary' : 'extended';
@@ -83,13 +118,14 @@ export default function FamilyDetail() {
           email: memberForm.email,
           display_name: memberForm.name,
           role: role,
-          permitted_albums: combinedPermissions
+          permitted_albums: combinedPermissions,
+          duration: memberForm.duration
         });
       }
       const familyRes = await studioAPI.getFamilyDetail(id);
       setFamily(familyRes.data.family);
       setShowMemberModal(false);
-      setMemberForm({ email: '', name: '', permitted_albums: [], permitted_events: [] });
+      setMemberForm({ email: '', name: '', permitted_albums: [], permitted_events: [], duration: 'unlimited' });
       setEditingMember(null);
     } catch (e) {
       console.error("Failed to save member", e);
@@ -104,11 +140,22 @@ export default function FamilyDetail() {
     const pEvents = rawPerms.filter(p => p.startsWith('event:')).map(p => p.replace('event:', ''));
     const pAlbums = rawPerms.filter(p => p.startsWith('album:')).map(p => p.replace('album:', ''));
 
+    let dur = 'unlimited';
+    if (m.expires_at) {
+      const diffHrs = Math.round((m.expires_at - Date.now()) / (1000 * 60 * 60));
+      if (diffHrs <= 1) dur = '1h';
+      else if (diffHrs <= 24) dur = '1d';
+      else if (diffHrs <= 120) dur = '5d';
+      else if (diffHrs <= 168) dur = '1w';
+      else if (diffHrs <= 8760) dur = '1y';
+    }
+
     setMemberForm({ 
       email: m.email, 
       name: m.display_name, 
       permitted_albums: pAlbums.length > 0 ? pAlbums : allAlbums.map(a => a.id),
-      permitted_events: pEvents.length > 0 ? pEvents : events.map(e => e.id)
+      permitted_events: pEvents.length > 0 ? pEvents : events.map(e => e.id),
+      duration: dur
     });
     setEditingMember(m);
     setShowMemberModal(true);
@@ -119,7 +166,8 @@ export default function FamilyDetail() {
       email: '', 
       name: '', 
       permitted_albums: allAlbums.map(a => a.id),
-      permitted_events: events.map(e => e.id)
+      permitted_events: events.map(e => e.id),
+      duration: 'unlimited'
     });
     setEditingMember(null);
     setShowMemberModal(true);
@@ -145,18 +193,28 @@ export default function FamilyDetail() {
 
   const handleCreateEvent = async (e) => {
     e.preventDefault();
-    if (!form.name) return;
+    if (!form.name || !form.auditorium) return;
     setSaving(true);
     try {
+      const serializedDescription = JSON.stringify({
+        notes: form.description,
+        location: form.location,
+        total_amount: form.total_amount,
+        advance_amount: form.advance_amount,
+        deliverables: form.deliverables,
+        auditorium: form.auditorium,
+        end_date: form.end_date
+      });
       await studioAPI.createEvent(id, {
         title: form.name,
         event_date: form.date,
-        description: form.description
+        description: serializedDescription
       });
       const eventsRes = await studioAPI.getFamilyEvents(id);
       setEvents(eventsRes.data.events);
       setShowModal(false);
-      setForm({ name: '', date: new Date().toISOString().split('T')[0], description: '' });
+      setForm({ name: '', date: new Date().toISOString().split('T')[0], end_date: new Date().toISOString().split('T')[0], description: '', location: '', total_amount: '', advance_amount: '', deliverables: '', auditorium: '' });
+      setSelectedPackageId('');
     } catch (e) {
       console.error("Failed to create event", e);
     } finally {
@@ -209,30 +267,31 @@ export default function FamilyDetail() {
         {/* Profile Card */}
         <div style={{ 
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+          flexWrap: 'wrap', gap: 24,
           marginBottom: 48, background: '#fff', borderRadius: 32, 
-          border: '1px solid #f1f5f9', padding: 40, boxShadow: '0 4px 20px rgba(0,0,0,0.02)' 
+          border: '1px solid #f1f5f9', padding: 32, boxShadow: '0 4px 20px rgba(0,0,0,0.02)' 
         }} className="mobile-stack">
-          <div style={{ display: 'flex', gap: 40, alignItems: 'center' }} className="mobile-stack">
+          <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', flex: '1 1 500px', minWidth: 0 }} className="mobile-stack">
             <div style={{ 
-              width: 100, height: 100, borderRadius: 32, 
+              width: 60, height: 60, borderRadius: 18, 
               background: '#f8fafc', display: 'flex', 
               alignItems: 'center', justifyContent: 'center', color: '#004252',
               boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.02)',
               flexShrink: 0
             }}>
-              <Users size={48} />
+              <Users size={28} />
             </div>
-            <div className="mobile-text-center">
-              <h1 style={{ fontSize: 32, fontWeight: 800, color: '#004252', marginBottom: 12, letterSpacing: '-0.02em' }}>{family?.name}</h1>
-              <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }} className="xs-stack">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#64748b', fontWeight: 500 }}>
+            <div className="mobile-text-center" style={{ flex: 1, minWidth: 0 }}>
+              <h1 style={{ fontSize: 24, fontWeight: 800, color: '#004252', marginBottom: 8, letterSpacing: '-0.02em' }}>{family?.name}</h1>
+              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }} className="xs-stack">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#64748b', fontWeight: 500 }}>
                   <User size={16} style={{ opacity: 0.6 }} /> {family?.primary_contact_name}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#64748b', fontWeight: 500 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#64748b', fontWeight: 500 }}>
                   <Mail size={16} style={{ opacity: 0.6 }} /> {family?.primary_contact_email}
                 </div>
                 {family?.phone && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#64748b', fontWeight: 500 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#64748b', fontWeight: 500 }}>
                     <Phone size={16} style={{ opacity: 0.6 }} /> {family?.phone}
                   </div>
                 )}
@@ -243,7 +302,7 @@ export default function FamilyDetail() {
             onClick={() => setShowModal(true)}
             style={{
               background: '#004252', color: '#fff', border: 'none',
-              padding: '16px 32px', borderRadius: 18, fontSize: 14,
+              padding: '12px 24px', borderRadius: 16, fontSize: 14,
               fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
               boxShadow: '0 12px 24px rgba(0,66,82,0.15)',
               transition: 'all 0.2s',
@@ -284,8 +343,19 @@ export default function FamilyDetail() {
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20 }}>
-                {events.map(e => {
+                 {events.map(e => {
                   const date = e.date || e.event_date;
+                  const meta = (() => {
+                    try {
+                      return JSON.parse(e.description);
+                    } catch(err) {
+                      return {};
+                    }
+                  })();
+                  const endDate = meta?.end_date;
+                  const dateDisplay = (date && endDate && date !== endDate)
+                    ? `${new Date(date).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`
+                    : (date ? new Date(date).toLocaleDateString() : 'Date TBD');
                   return (
                     <div 
                       key={e.id}
@@ -312,7 +382,7 @@ export default function FamilyDetail() {
                         <div style={{ display: 'flex', gap: 20 }} className="xs-stack">
                           <span style={{ fontSize: 13, color: '#64748b', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
                             <Clock size={14} style={{ opacity: 0.6 }} /> 
-                            {date ? new Date(date).toLocaleDateString() : 'Date TBD'}
+                            {dateDisplay}
                           </span>
                           <span style={{ fontSize: 13, color: '#64748b', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
                             <Album size={14} style={{ opacity: 0.6 }} /> {e.album_count || 0} Albums
@@ -396,6 +466,29 @@ export default function FamilyDetail() {
                       {m.role}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {m.expires_at && (
+                        <span style={{ 
+                          fontSize: 10, 
+                          color: m.is_expired ? '#dc2626' : '#0369a1', 
+                          fontWeight: 800,
+                          marginRight: 8,
+                          background: m.is_expired ? '#fef2f2' : '#f0f9ff',
+                          padding: '4px 8px',
+                          borderRadius: 6,
+                          border: `1px solid ${m.is_expired ? '#fee2e2' : '#e0f2fe'}`
+                        }}>
+                          {m.is_expired 
+                            ? 'Expired' 
+                            : (() => {
+                                const diffMs = m.expires_at - Date.now();
+                                const diffHrs = Math.round(diffMs / (1000 * 60 * 60));
+                                if (diffHrs < 1) return 'Expires in < 1h';
+                                if (diffHrs < 24) return `Expires in ${diffHrs}h`;
+                                return `Expires in ${Math.ceil(diffHrs / 24)}d`;
+                              })()
+                          }
+                        </span>
+                      )}
                       {m.last_login_at ? (
                         <>
                           <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a' }} />
@@ -422,7 +515,7 @@ export default function FamilyDetail() {
       </div>
 
       {/* Modal Definitions */}
-      {showModal && (
+      {showModal && createPortal(
         <div 
           style={{ 
             position: 'fixed', inset: 0, background: 'rgba(0,29,37,0.3)', backdropFilter: 'blur(12px)', 
@@ -435,7 +528,8 @@ export default function FamilyDetail() {
           <div 
             style={{ 
               background: '#fff', padding: 40, borderRadius: 32, width: '100%', maxWidth: 480, 
-              boxShadow: '0 40px 100px rgba(0,0,0,0.15)'
+              boxShadow: '0 40px 100px rgba(0,0,0,0.15)',
+              maxHeight: '90vh', overflowY: 'auto'
             }} 
             onClick={e => e.stopPropagation()}
           >
@@ -455,18 +549,63 @@ export default function FamilyDetail() {
               </button>
             </div>
 
-            <form onSubmit={handleCreateEvent} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <form onSubmit={handleCreateEvent} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Event Title *</label>
                 <input style={inputStyle} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Wedding Shoot" />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Event Date *</label>
-                <input type="date" style={inputStyle} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Service Package Template (Optional)</label>
+                <select 
+                  value={selectedPackageId} 
+                  onChange={e => handlePackageChange(e.target.value)} 
+                  style={inputStyle}
+                >
+                  <option value="">-- Choose Package --</option>
+                  {packages.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.package_name} (₹{Number(p.base_price).toLocaleString('en-IN')})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Start Date *</label>
+                  <input type="date" style={inputStyle} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>End Date *</label>
+                  <input type="date" style={inputStyle} value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} required />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Location (City)</label>
+                  <input style={inputStyle} value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="e.g. Chennai" />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Auditorium / Venue Name *</label>
+                  <input style={inputStyle} value={form.auditorium} onChange={e => setForm({ ...form, auditorium: e.target.value })} placeholder="e.g. Grand Palace Hall" required />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Total Amount (₹)</label>
+                  <input style={inputStyle} value={formatINR(form.total_amount)} onChange={e => setForm({ ...form, total_amount: parseINR(e.target.value) })} placeholder="Total quote" />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Advance Amount (₹)</label>
+                  <input style={inputStyle} value={formatINR(form.advance_amount)} onChange={e => setForm({ ...form, advance_amount: parseINR(e.target.value) })} placeholder="Advance paid" />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Deliverables / Output</label>
+                <input style={inputStyle} value={form.deliverables} onChange={e => setForm({ ...form, deliverables: e.target.value })} placeholder="e.g. 1 Album, Cinematic Video, Photos" />
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Private Notes</label>
-                <textarea style={{ ...inputStyle, minHeight: 100, resize: 'none' }} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Any specific requirements or internal notes..." />
+                <textarea style={{ ...inputStyle, minHeight: 80, resize: 'none' }} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Any specific requirements or internal notes..." />
               </div>
               
               <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
@@ -484,10 +623,11 @@ export default function FamilyDetail() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {showMemberModal && (
+      {showMemberModal && createPortal(
         <div 
           style={{ 
             position: 'fixed', inset: 0, background: 'rgba(0,29,37,0.3)', backdropFilter: 'blur(12px)', 
@@ -519,6 +659,21 @@ export default function FamilyDetail() {
               <div>
                 <label style={{ fontSize: 11, fontWeight: 800, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 1 }}>Display Name</label>
                 <input style={inputStyle} value={memberForm.name} onChange={e => setMemberForm({ ...memberForm, name: e.target.value })} placeholder="e.g. John Doe" />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 800, color: '#64748b', marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 1 }}>Access Duration Limit</label>
+                <select 
+                  value={memberForm.duration || 'unlimited'} 
+                  onChange={e => setMemberForm({ ...memberForm, duration: e.target.value })} 
+                  style={inputStyle}
+                >
+                  <option value="unlimited">Unlimited (No expiry)</option>
+                  <option value="1h">1 Hour (Quick guest check)</option>
+                  <option value="1d">1 Day</option>
+                  <option value="5d">5 Days</option>
+                  <option value="1w">1 Week</option>
+                  <option value="1y">1 Year</option>
+                </select>
               </div>
 
               <div style={{ marginTop: 8 }}>
@@ -619,10 +774,11 @@ export default function FamilyDetail() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {showConfirmModal && (
+      {showConfirmModal && createPortal(
         <div 
           style={{ 
             position: 'fixed', inset: 0, background: 'rgba(0,29,37,0.3)', backdropFilter: 'blur(12px)', 
@@ -663,7 +819,8 @@ export default function FamilyDetail() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

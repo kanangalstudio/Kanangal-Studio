@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useGlobal } from '../GlobalContext';
 import { studioAPI } from '../api';
 import {
@@ -9,6 +10,17 @@ import {
   Tag
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+
+const formatINR = (val) => {
+  if (!val) return '';
+  const clean = val.toString().replace(/\D/g, '');
+  if (!clean) return '';
+  return new Intl.NumberFormat('en-IN').format(parseInt(clean, 10));
+};
+
+const parseINR = (val) => {
+  return val.replace(/\D/g, '');
+};
 
 export default function Events() {
   const { families } = useGlobal();
@@ -21,12 +33,39 @@ export default function Events() {
   const [familyFilter, setFamilyFilter] = useState('all');
   const [showModal,    setShowModal]    = useState(false);
   const [saving,       setSaving]       = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [form,         setForm]         = useState({
     familyId: '',
     name:     '',
     date:     new Date().toISOString().split('T')[0],
+    end_date: new Date().toISOString().split('T')[0],
     description: '',
+    location: '',
+    total_amount: '',
+    advance_amount: '',
+    deliverables: '',
+    auditorium: ''
   });
+
+  const parseDesc = (desc) => {
+    if (!desc) return { notes: '', location: '', total_amount: '', advance_amount: '', deliverables: '', auditorium: '', end_date: '' };
+    try {
+      const parsed = JSON.parse(desc);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          notes: parsed.notes || '',
+          location: parsed.location || '',
+          total_amount: parsed.total_amount || '',
+          advance_amount: parsed.advance_amount || '',
+          deliverables: parsed.deliverables || '',
+          auditorium: parsed.auditorium || '',
+          end_date: parsed.end_date || ''
+        };
+      }
+    } catch(e) {}
+    return { notes: desc, location: '', total_amount: '', advance_amount: '', deliverables: '', auditorium: '', end_date: '' };
+  };
 
   // ── Load all events ──────────────────────────────────────
   const loadAllEvents = async () => {
@@ -48,16 +87,25 @@ export default function Events() {
   // ── Create event ──────────────────────────────────────────
   const handleCreateEvent = async (e) => {
     e.preventDefault();
-    if (!form.familyId || !form.name) return;
+    if (!form.familyId || !form.name || !form.auditorium) return;
     setSaving(true);
     try {
+      const serializedDescription = JSON.stringify({
+        notes: form.description,
+        location: form.location,
+        total_amount: form.total_amount,
+        advance_amount: form.advance_amount,
+        deliverables: form.deliverables,
+        auditorium: form.auditorium,
+        end_date: form.end_date
+      });
       await studioAPI.createEvent(form.familyId, {
         title:       form.name,
         event_date:  form.date,
-        description: form.description,
+        description: serializedDescription,
       });
       setShowModal(false);
-      setForm({ familyId:'', name:'', date: new Date().toISOString().split('T')[0], description:'' });
+      setForm({ familyId:'', name:'', date: new Date().toISOString().split('T')[0], end_date: new Date().toISOString().split('T')[0], description:'', location:'', total_amount:'', advance_amount:'', deliverables:'', auditorium:'' });
       loadAllEvents();
     } catch(err) {
       console.error('createEvent error:', err);
@@ -75,8 +123,50 @@ export default function Events() {
     const matchStatus= statusFilter === 'all' ||
                        (statusFilter === 'published' ? e.is_published || e.published : !(e.is_published || e.published));
     const matchFamily= familyFilter === 'all' || e.family_id === familyFilter;
-    return matchSearch && matchStatus && matchFamily;
+    const matchCalendarDate = !selectedDate || (e.event_date || e.date)?.split('T')[0] === selectedDate;
+    return matchSearch && matchStatus && matchFamily && matchCalendarDate;
   });
+
+  // Helper to generate days of the month
+  const getDaysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    const days = [];
+    
+    // Padding from previous month
+    const startPadding = firstDay.getDay(); // 0 is Sunday
+    for (let i = startPadding - 1; i >= 0; i--) {
+      days.push({
+        date: new Date(year, month, -i),
+        isCurrentMonth: false
+      });
+    }
+    
+    // Days in current month
+    for (let i = 1; i <= lastDay.getDate(); i++) {
+      days.push({
+        date: new Date(year, month, i),
+        isCurrentMonth: true
+      });
+    }
+    
+    return days;
+  };
+
+  const days = getDaysInMonth(currentMonth);
+  const weekDays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  // Check if a date has events
+  const getEventsForDate = (d) => {
+    const dateStr = d.toISOString().split('T')[0];
+    return events.filter(e => {
+      const evDate = e.event_date || e.date;
+      return evDate && evDate.split('T')[0] === dateStr;
+    });
+  };
 
   // ── Design tokens ─────────────────────────────────────────
   const glassCard = {
@@ -194,110 +284,276 @@ export default function Events() {
         </div>
       </div>
 
-      {/* Content */}
-      {(families || []).length === 0 ? (
-        <div style={{ 
-          padding: 100, textAlign: 'center',
-          ...glassCard,
-          border: '1px dashed rgba(0,29,37,0.12)'
-        }}>
-          <Users size={64} style={{ marginBottom: 20, opacity: 0.1, color: '#004252' }} />
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#004252', marginBottom: 8 }}>No families yet</div>
-          <div style={{ fontSize: 14, color: '#849ca5' }}>Add a family first to create events</div>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div style={{ 
-          padding: 100, textAlign: 'center', color: '#849ca5',
-          fontSize: 15,
-          ...glassCard,
-          border: '1px dashed rgba(0,29,37,0.12)'
-        }}>
-          No events found matching your filter.
-        </div>
-      ) : (
-        <div style={{ ...glassCard }}>
-          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
-            <thead>
-              <tr style={{ background: 'rgba(0,29,37,0.03)' }}>
-                {['Event Details','Family','Event Date','Status',''].map(h => (
-                  <th key={h} style={{
-                    padding: '20px 24px', textAlign: 'left',
-                    fontSize: 11, fontWeight: 800, color: '#849ca5',
-                    textTransform: 'uppercase', letterSpacing: 1,
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((ev) => {
-                const title     = ev.title || ev.name || '—';
-                const published = ev.is_published || ev.published || false;
-                const date      = ev.event_date || ev.date;
-                return (
-                  <tr key={ev.id}
-                    onClick={() => navigate(`/events/${ev.id}`)}
-                    style={{
-                      borderBottom: '1px solid rgba(0,29,37,0.04)',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.5)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <td style={{ padding: '20px 24px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                        <div style={{ 
-                          width: 44, height: 44, borderRadius: 12,
-                          background: 'rgba(0,66,82,0.07)', display: 'flex',
-                          alignItems: 'center', justifyContent: 'center', color: '#004252',
-                          flexShrink: 0
-                        }}>
-                          <Calendar size={20} />
-                        </div>
-                        <span style={{ fontSize: 15, fontWeight: 800, color: '#001D25' }}>{title}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '20px 24px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10,
-                        fontSize: 14, color: '#001D25', fontWeight: 600 }}>
-                        <Users size={16} style={{ opacity: 0.4, color: '#004252' }} /> {ev.family_name || '—'}
-                      </div>
-                    </td>
-                    <td style={{ padding: '20px 24px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10,
-                        fontSize: 14, color: '#849ca5', fontWeight: 500 }}>
-                        <Clock size={16} style={{ opacity: 0.6 }} />
-                        {date ? new Date(date).toLocaleDateString(undefined, {
-                          day: 'numeric', month: 'short', year: 'numeric'
-                        }) : '—'}
-                      </div>
-                    </td>
-                    <td style={{ padding: '20px 24px' }}>
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 8,
-                        padding: '6px 14px', borderRadius: 20,
-                        fontSize: 12, fontWeight: 800,
-                        background: published ? 'rgba(16,185,129,0.08)' : 'rgba(0,29,37,0.05)',
-                        color:      published ? '#10b981' : '#849ca5',
-                        border: `1px solid ${published ? 'rgba(16,185,129,0.2)' : 'rgba(0,29,37,0.08)'}`
-                      }}>
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: published ? '#10b981' : '#849ca5' }} />
-                        {published ? 'Published' : 'Draft'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '20px 24px', textAlign: 'right' }}>
-                      <ChevronRight size={18} style={{ color: 'rgba(0,29,37,0.2)' }} />
-                    </td>
+      {/* Two column layout with sidebar calendar */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr', gap: 32 }} className="grid-2-col">
+        {/* Left Column: Events table */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {(families || []).length === 0 ? (
+            <div style={{ 
+              padding: 100, textAlign: 'center',
+              ...glassCard,
+              border: '1px dashed rgba(0,29,37,0.12)'
+            }}>
+              <Users size={64} style={{ marginBottom: 20, opacity: 0.1, color: '#004252' }} />
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#004252', marginBottom: 8 }}>No families yet</div>
+              <div style={{ fontSize: 14, color: '#849ca5' }}>Add a family first to create events</div>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ 
+              padding: 100, textAlign: 'center', color: '#849ca5',
+              fontSize: 15,
+              ...glassCard,
+              border: '1px dashed rgba(0,29,37,0.12)'
+            }}>
+              No events found matching your filters.
+            </div>
+          ) : (
+            <div style={{ ...glassCard }}>
+              <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
+                <thead>
+                  <tr style={{ background: 'rgba(0,29,37,0.03)' }}>
+                    {['Event Details','Family','Event Date','Status',''].map(h => (
+                      <th key={h} style={{
+                        padding: '20px 24px', textAlign: 'left',
+                        fontSize: 11, fontWeight: 800, color: '#849ca5',
+                        textTransform: 'uppercase', letterSpacing: 1,
+                      }}>{h}</th>
+                    ))}
                   </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((ev) => {
+                    const title     = ev.title || ev.name || '—';
+                    const published = ev.is_published || ev.published || false;
+                    const date      = ev.event_date || ev.date;
+                    return (
+                      <tr key={ev.id}
+                        onClick={() => navigate(`/events/${ev.id}`)}
+                        style={{
+                          borderBottom: '1px solid rgba(0,29,37,0.04)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.5)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <td style={{ padding: '20px 24px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                            <div style={{ 
+                              width: 44, height: 44, borderRadius: 12,
+                              background: 'rgba(0,66,82,0.07)', display: 'flex',
+                              alignItems: 'center', justifyContent: 'center', color: '#004252',
+                              flexShrink: 0
+                            }}>
+                              <Calendar size={20} />
+                            </div>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: '#001D25' }}>{title}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '20px 24px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+                            fontSize: 14, color: '#001D25', fontWeight: 600 }}>
+                            <Users size={16} style={{ opacity: 0.4, color: '#004252' }} /> {ev.family_name || '—'}
+                          </div>
+                        </td>
+                        <td style={{ padding: '20px 24px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+                            fontSize: 14, color: '#849ca5', fontWeight: 500 }}>
+                            <Clock size={16} style={{ opacity: 0.6 }} />
+                            {(() => {
+                              const meta = parseDesc(ev.description);
+                              const endDate = meta?.end_date;
+                              const formatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
+                              if (date && endDate && date !== endDate) {
+                                return `${new Date(date).toLocaleDateString(undefined, formatOptions)} - ${new Date(endDate).toLocaleDateString(undefined, formatOptions)}`;
+                              }
+                              return date ? new Date(date).toLocaleDateString(undefined, formatOptions) : '—';
+                            })()}
+                          </div>
+                        </td>
+                        <td style={{ padding: '20px 24px' }}>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 8,
+                            padding: '6px 14px', borderRadius: 20,
+                            fontSize: 12, fontWeight: 800,
+                            background: published ? 'rgba(16,185,129,0.08)' : 'rgba(0,29,37,0.05)',
+                            color:      published ? '#10b981' : '#849ca5',
+                            border: `1px solid ${published ? 'rgba(16,185,129,0.2)' : 'rgba(0,29,37,0.08)'}`
+                          }}>
+                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: published ? '#10b981' : '#849ca5' }} />
+                            {published ? 'Published' : 'Draft'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '20px 24px', textAlign: 'right' }}>
+                          <ChevronRight size={18} style={{ color: 'rgba(0,29,37,0.2)' }} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: Premium Calendar Sidebar */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <div style={{ ...glassCard, padding: 28 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 800, color: '#001D25', margin: 0, letterSpacing: -0.5 }}>Timeline Calendar</h3>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button 
+                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
+                  style={{ background: 'rgba(0,29,37,0.05)', border: 'none', borderRadius: 8, width: 28, height: 28, cursor: 'pointer', fontWeight: 800, color: '#004252' }}
+                >
+                  &lt;
+                </button>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#004252', minWidth: 80, textAlign: 'center', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  {currentMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                </span>
+                <button 
+                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
+                  style={{ background: 'rgba(0,29,37,0.05)', border: 'none', borderRadius: 8, width: 28, height: 28, cursor: 'pointer', fontWeight: 800, color: '#004252' }}
+                >
+                  &gt;
+                </button>
+              </div>
+            </div>
+
+            {/* Week days header */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, textAlign: 'center', marginBottom: 12 }}>
+              {weekDays.map(wd => (
+                <div key={wd} style={{ fontSize: 11, fontWeight: 800, color: '#849ca5', textTransform: 'uppercase', letterSpacing: 0.5 }}>{wd}</div>
+              ))}
+            </div>
+
+            {/* Days grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
+              {days.map((d, index) => {
+                const dateStr = d.date.toISOString().split('T')[0];
+                const dayEvents = getEventsForDate(d.date);
+                const hasEvents = dayEvents.length > 0;
+                const isSelected = selectedDate === dateStr;
+                const isToday = new Date().toISOString().split('T')[0] === dateStr;
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedDate(null);
+                      } else {
+                        setSelectedDate(dateStr);
+                      }
+                    }}
+                    style={{
+                      background: isSelected ? '#004252' : isToday ? 'rgba(0,66,82,0.08)' : 'transparent',
+                      border: isToday ? '1px solid rgba(0,66,82,0.2)' : 'none',
+                      borderRadius: 12,
+                      aspectRatio: '1',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      position: 'relative',
+                      opacity: d.isCurrentMonth ? 1 : 0.3,
+                      transition: 'all 0.2s',
+                      padding: 0
+                    }}
+                    title={`${dayEvents.length} Event(s) on ${d.date.toLocaleDateString()}`}
+                  >
+                    <span style={{ 
+                      fontSize: 13, 
+                      fontWeight: (isSelected || isToday) ? 800 : 600,
+                      color: isSelected ? '#fff' : isToday ? '#004252' : '#001D25' 
+                    }}>
+                      {d.date.getDate()}
+                    </span>
+                    {hasEvents && (
+                      <span style={{
+                        width: 5,
+                        height: 5,
+                        borderRadius: '50%',
+                        background: isSelected ? '#fff' : '#10b981',
+                        position: 'absolute',
+                        bottom: 4
+                      }} />
+                    )}
+                  </button>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+            {selectedDate && (
+              <button 
+                onClick={() => setSelectedDate(null)}
+                style={{
+                  width: '100%', padding: '12px', marginTop: 20,
+                  background: 'rgba(0,29,37,0.05)', border: 'none', borderRadius: 14,
+                  fontSize: 12, fontWeight: 800, color: '#004252', cursor: 'pointer',
+                  transition: 'all 0.2s', marginBottom: 20
+                }}
+              >
+                Clear Date Filter
+              </button>
+            )}
+
+            {selectedDate && (
+              <div style={{ marginTop: 12, borderTop: '1px solid rgba(0,29,37,0.08)', paddingTop: 20 }}>
+                <h4 style={{ fontSize: 11, fontWeight: 800, color: '#849ca5', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>
+                  Events on this Day
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {(() => {
+                    const daysEvs = events.filter(e => {
+                      const evDate = e.event_date || e.date;
+                      return evDate && evDate.split('T')[0] === selectedDate;
+                    });
+                    if (daysEvs.length === 0) return <div style={{ fontSize: 12, color: '#849ca5' }}>No events.</div>;
+                    return daysEvs.map(ev => {
+                      const meta = parseDesc(ev.description);
+                      return (
+                        <div 
+                          key={ev.id} 
+                          onClick={() => navigate(`/events/${ev.id}`)}
+                          style={{
+                            background: 'rgba(255,255,255,0.5)',
+                            border: '1px solid rgba(0,29,37,0.05)',
+                            borderRadius: 16, padding: 16, cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          className="hover-lift"
+                        >
+                          <div style={{ fontSize: 14, fontWeight: 800, color: '#001D25', marginBottom: 4 }}>{ev.title || ev.name}</div>
+                          <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>{ev.family_name}</div>
+                          {meta.auditorium && (
+                            <div style={{ fontSize: 11, color: '#004252', fontWeight: 700, marginBottom: 2 }}>
+                              🏛️ {meta.auditorium}
+                            </div>
+                          )}
+                          {meta.location && (
+                            <div style={{ fontSize: 11, color: '#849ca5', fontWeight: 600, marginBottom: 6 }}>
+                              📍 {meta.location}
+                            </div>
+                          )}
+                          {meta.notes && (
+                            <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic' }}>
+                              "{meta.notes}"
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
       {/* Create Event Modal */}
-      {showModal && (
+      {showModal && createPortal(
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,14,20,0.5)',
           backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
@@ -311,6 +567,7 @@ export default function Events() {
             border: '1px solid rgba(255,255,255,0.8)',
             padding: 40, borderRadius: 28, width: '100%', maxWidth: 500,
             boxShadow: '0 40px 80px rgba(0,14,20,0.15)',
+            maxHeight: '90vh', overflowY: 'auto'
           }} onClick={e => e.stopPropagation()}>
 
             <div style={{ display: 'flex', justifyContent: 'space-between',
@@ -365,16 +622,100 @@ export default function Events() {
                 />
               </div>
 
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#849ca5',
+                    marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Start Date *
+                  </label>
+                  <input
+                    type="date"
+                    style={modalInputStyle}
+                    value={form.date}
+                    onChange={e => setForm({...form, date: e.target.value})}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#849ca5',
+                    marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    End Date *
+                  </label>
+                  <input
+                    type="date"
+                    style={modalInputStyle}
+                    value={form.end_date}
+                    onChange={e => setForm({...form, end_date: e.target.value})}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#849ca5',
+                    marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Location (City)
+                  </label>
+                  <input
+                    style={modalInputStyle}
+                    value={form.location}
+                    onChange={e => setForm({...form, location: e.target.value})}
+                    placeholder="e.g. Chennai"
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#849ca5',
+                    marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Auditorium / Venue Name *
+                  </label>
+                  <input
+                    style={modalInputStyle}
+                    value={form.auditorium || ''}
+                    onChange={e => setForm({...form, auditorium: e.target.value})}
+                    placeholder="e.g. Grand Palace Hall"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#849ca5',
+                    marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Total Amount (₹)
+                  </label>
+                  <input
+                    style={modalInputStyle}
+                    value={formatINR(form.total_amount)}
+                    onChange={e => setForm({...form, total_amount: parseINR(e.target.value)})}
+                    placeholder="Total quote"
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#849ca5',
+                    marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Advance Amount (₹)
+                  </label>
+                  <input
+                    style={modalInputStyle}
+                    value={formatINR(form.advance_amount)}
+                    onChange={e => setForm({...form, advance_amount: parseINR(e.target.value)})}
+                    placeholder="Advance paid"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#849ca5',
                   marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Scheduled Date *
+                  Deliverables / Output
                 </label>
                 <input
-                  type="date"
                   style={modalInputStyle}
-                  value={form.date}
-                  onChange={e => setForm({...form, date: e.target.value})}
+                  value={form.deliverables}
+                  onChange={e => setForm({...form, deliverables: e.target.value})}
+                  placeholder="e.g. 1 Album, Cinematic Video, Photos"
                 />
               </div>
 
@@ -384,7 +725,7 @@ export default function Events() {
                   Event Notes
                 </label>
                 <textarea
-                  style={{ ...modalInputStyle, minHeight: 100, resize: 'none', padding: '14px' }}
+                  style={{ ...modalInputStyle, minHeight: 80, resize: 'none', padding: '14px' }}
                   value={form.description}
                   onChange={e => setForm({...form, description: e.target.value})}
                   placeholder="Details about the session..."
@@ -413,7 +754,8 @@ export default function Events() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
